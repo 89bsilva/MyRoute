@@ -128,6 +128,14 @@ Obs.: Será disponibilizado uma variável (ou passado como argumento da chamada 
 $routes->all('/?', '404.php:NotFound=noExist'); 
 ``` 
 
+# Último Passo
+
+Logo após terminar de criar as rotas é necessário chamar o método **"activate"**. Após isso o MyRote estará configurado e ativo!
+
+```php
+<?php
+$routes->activate(); 
+``` 
 ### Autor
 
 Bruno Silva Santana - <ibrunosilvas@gmail.com> - <https://github.com/ibrunosilvas>
