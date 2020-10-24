@@ -1,0 +1,18 @@
+{
+    "name": "89bsilva/my-route",
+    "description": "Para controle simples de rotas",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Bruno Silva Santana",
+            "email": "ibrunosilvas@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^7.2"
+    },
+    "autoload": {
+        "files": ["MyRoute.php"],
+        "psr-4": {"MyRoute\\": "./"}
+    }
+}
