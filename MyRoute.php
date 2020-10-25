@@ -6,21 +6,23 @@
  */
 class MyRoute
 {
-    public $routes;
+    protected $routes;
+    public $mapping;
     protected $baseDir;
 
     public function __construct($prefixPageFilePath = '')
     {
-        $myRouteDir    = dirname(__FILE__) . DIRECTORY_SEPARATOR;
-        $packgeDir     = dirname($myRouteDir) . DIRECTORY_SEPARATOR;
-        $vendorDir     = dirname($packgeDir) . DIRECTORY_SEPARATOR;
-        $baseDir       = dirname($vendorDir) . DIRECTORY_SEPARATOR;
+        $myRouteDir = dirname(__FILE__) . DIRECTORY_SEPARATOR;
+        $packgeDir  = dirname($myRouteDir) . DIRECTORY_SEPARATOR;
+        $vendorDir  = dirname($packgeDir) . DIRECTORY_SEPARATOR;
+        $baseDir    = dirname($vendorDir) . DIRECTORY_SEPARATOR;
         
         if(!file_exists($baseDir . '.htaccess')) {
             copy($myRouteDir . DIRECTORY_SEPARATOR . '.htaccess' , $baseDir . '.htaccess'); 
         }
 
         $this->baseDir = $baseDir;
+        $this->mapping = array();
         $this->routes  = array(
             'GET'     => array(),
             'POST'    => array(),
@@ -55,7 +57,11 @@ class MyRoute
     public function to(array $to, $url, $pageFilePath)
     {
         foreach ($to as $methodName) {
-            $this->set($url, $pageFilePath, strtoupper($methodName));
+            $methodName = strtoupper($methodName);
+            
+            if(array_key_exists($methodName, $this->routes)) {
+                $this->set($url, $pageFilePath, $methodName);
+            }
         }
     }
 
@@ -84,17 +90,51 @@ class MyRoute
         $this->set($url, $pageFilePath, 'OPTIONS');
     }
 
+    public function guard($route, $filePath)
+    {
+        if(!isset($this->mapping[$route])) {
+            return;
+        }
+
+        $response  = array();
+        $hasClass  = strpos($filePath, ':');
+        
+        if($hasClass) {
+            $className  = $this->getClassName($filePath);
+            $action     = $this->getMethodName($filePath);
+        } else {
+            $action = substr($filePath, strpos($filePath, '@') + 1);
+        }
+
+        $fileGuard  = !!$hasClass ? substr($filePath, 0, $hasClass) : substr($filePath, 0, strpos($filePath, '@'));
+
+        foreach ($this->mapping[$route] as $method => $key) {
+            $this->routes[$method][$key]['guard'] = array(
+                'className' => $hasClass ? $className : false,
+                'action'    => $action,
+                'fileGuard' => $this->baseDir . $fileGuard
+            );
+        }
+    }
+
     protected function set($url, $pageFilePath, $requestMethod)
     {
+        $namedRoute = substr($url, 0, 1) === '[';
+
+        if($namedRoute) {
+            $name = substr($url, 1, strpos($url, ']') - 1);
+            $url  = substr($url, strpos($url, ']') + 1);
+        }
+
         $hasClass  = strpos($pageFilePath, ':');
-        $filePath  = !!$hasClass ?  substr($pageFilePath, 0, $hasClass) : $pageFilePath;
+        $filePath  = !!$hasClass ? substr($pageFilePath, 0, $hasClass) : $pageFilePath;
         $settings  = $this->getRouteURLSettings($url);
         $variables = $settings['variables'];
         $remaining = $settings['remaining'];
         
         unset($settings['variables']);
         unset($settings['remaining']);
-
+            
         $this->routes[$requestMethod][] = array(
             'url'         => $url,
             'urlSettings' => $settings,
@@ -104,13 +144,29 @@ class MyRoute
             'className'   => $this->getClassName($pageFilePath),
             'methodName'  => $this->getMethodName($pageFilePath),
         );
+
+        $lastKey = array_key_last($this->routes[$requestMethod]);
+
+        $this->mapping[$url][$requestMethod] = $lastKey;
+
+        if($namedRoute) {
+            $this->mapping[$name][$requestMethod] = $lastKey;
+        }
     }
     
     public function activate()
     {
+        if(
+            isset($_GET['MyRouteURL']) 
+            && (!isset($_SERVER['REDIRECT_STATUS']) OR $_SERVER['REDIRECT_STATUS'] != '200')
+        ) {
+            http_response_code(400);
+            exit('<h1 style="padding:10px;">Error 400 Bad Request</h1>');
+        }
+
         $url    = '/';
-        $url   .= isset( $_GET['url'])     ? strip_tags(trim(filter_input(INPUT_GET,'url', FILTER_SANITIZE_URL))) : '/';
-        $url    = substr($url, -1) === '/' ? substr($url, 0, -1)                                                  : $url;
+        $url   .= isset($_GET['MyRouteURL']) ? strip_tags(trim(filter_input(INPUT_GET,'MyRouteURL', FILTER_SANITIZE_URL))) : '/';
+        $url    = substr($url, -1) === '/'   ? substr($url, 0, -1) : $url;
         $method = $_SERVER['REQUEST_METHOD'];
 
         unset($_GET['url']);
@@ -126,11 +182,48 @@ class MyRoute
             http_response_code(404);
             exit('<h1 style="padding:10px;">Error 404 Not Found</h1>');
         }
-
-        $this->setActiveRouteVariables(explode('/', $url), $key, $method);
-        $this->loadActiveRouteFile($this->routes[$method][$key]);
         
-        return $key;
+        $this->setActiveRouteVariables(explode('/', $url), $key, $method);
+
+        $goAhead = isset($this->routes[$method][$key]['guard']) ? $this->executeGuard($this->routes[$method][$key]) : true;
+        
+        if($goAhead) {
+            $this->loadActiveRouteFile($this->routes[$method][$key]);
+        } else {
+            http_response_code(401);
+            exit('<h1 style="padding:10px;">Error 401 Unauthorized</h1>');
+        }
+    }
+
+    protected function executeGuard($route)
+    {
+        $routeGuard = $route['guard'];
+
+        extract($route['variables']);
+
+        $remaining = $route['remaining'];
+
+        include $routeGuard['fileGuard'];
+
+        $args = '';
+
+        foreach ($route['variables'] as $varName => $value) {
+            $args .= '$' . $varName . ",";
+        }
+
+        $args .= '$remaining);';
+
+        if($routeGuard['className']) {
+
+            $guardClass  = new $routeGuard['className']();
+            $action      = '$guardClass->' . $routeGuard['action'] . '(';
+
+        } else {
+            $action = $routeGuard['action'] . '(';
+        }
+
+        return eval('return ' . $action . $args);
+
     }
 
     protected function findActiveRouteKey($urlRequest, $method)
