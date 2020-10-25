@@ -20,7 +20,7 @@ require './vendor/autoload.php';
 # Criando o obejto MyRoute
 
 Ao instânciar a classe será criado o arquivo .htaccess com as configurações de reescrita de url para o arquivo index.php que deverá ser criado manualmente.
-Obs.: Caso o arquivo .htaccess já exista não será criado e para que o MyRoute funcione é necessário a reescrita de url para o arquivo de entrada com o valor da reescrita em $_GET['url']
+Obs.: Caso o arquivo .htaccess já exista não será criado e para que o MyRoute funcione é necessário a reescrita de url para o arquivo de entrada com o valor da reescrita em $_GET['MyRouteURL']
 
 ```php
 <?php
@@ -55,6 +55,9 @@ Para criar as rotas são disponibilizado os seguintes métodos:
         
     #Método Utilizado para criar uma rota que responde a requisições dos tipos passados em $to 
     to(array $to, string $url, string $pageFilePath)
+        
+    #Método Utilizado para proteger uma rota já criada com uma das chamadas acima
+    guard(string $route, string $filePath)
 
 ```
 
@@ -67,13 +70,13 @@ As rotas seguem a ordem em que foram criadas, o MyRoute devolve a primeira rota 
 * Criar as rotas:
     * **/**, controlada pelo arquivo: **home.html**, quando o tipo de requisição for: **"GET"**
     * **/contato**, controlada pelo arquivo: **contato.html**, quando o tipo de requisição for: **"GET"**
-    * **/contato/salvar**, controlada pelo arquivo: **salvar.php**, quando o tipo de requisição for: **"POST"**
+    * **/contato/salvar**, controlada pelo arquivo: **salvar.php**, quando o tipo de requisição for: **"POST"** ou **"PUT"**
 
 ```php
 <?php
 $routes->get('/', 'home.html');
 $routes->get('/contato', 'contato.html');
-$routes->post('/contato/salvar', 'salvar.php');
+$routes->to(array('POST', 'PUT'), '/contato/salvar', 'salvar.php');
 ``` 
 
 É possível utilizar uma classe e um método para controlar uma rota, para isso será necessário colocar **":"** logo após a extensão do arquivo e o nome da classe que será instanciada depois colocar  **"="** e o método que deverá ser chamado
@@ -84,7 +87,7 @@ Obs.: Para funcionar o nome da classe e o do método dever ser informado igualme
 * Criar as rotas:
     * **/**, controlada pela classe: **"MeuSite"**, metodo: **"home"** no arquivo: **site.php**, quando o tipo de requisição for: **"GET"**
     * **/contato**, controlada pela classe: **"MeuSite"**, metodo: **"contato"** no arquivo: **site.php**, quando o tipo de requisição for: **"GET"**
-    * **/contato**, controlada pela classe: **"MeuSite"**, metodo: **"salvar"** no arquivo: **site.php**, quando o tipo de requisição for: **"GET"**
+    * **/contato/salvar**, controlada pela classe: **"MeuSite"**, metodo: **"salvar"** no arquivo: **site.php**, quando o tipo de requisição for: **"POST"**
 
 ```php
 <?php
@@ -127,6 +130,46 @@ Obs.: Será disponibilizado uma variável (ou passado como argumento da chamada 
 */
 $routes->all('/?', '404.php:NotFound=noExist'); 
 ``` 
+
+# Protegendo Rotas
+
+Para proteger rotas é necessário chamar o método **"guard($route, $filePath)"** da instância MyRoute.
+Antes dchamar o método **"guard()"** é necessário ter uma rota já criada.
+O parâmetro $route é a URL que se deseja guardar.
+O parâmetro $filePath é o endereço do arquivo que será incluido para realizar a proteção. Esse arquivo deve conter uma função/método que será chamado antes do MyRoute carregar o arquivo responsável por responder a rota. Essa função/método deve lidar com autorização e caso seja permitido entrar na rota deve ser retornado um valor TRUE, somente assim o MyRoute prosseguirá com as ações para entregar o arquivo responsável por responder a rota
+
+#### Exemplo:
+* Proteger a rota: **/api/?** utilizando o arquivo: **"api.php"** com uma função: **"proteger"**
+
+```php
+<?php
+$route->guard('/api/?', 'api.php@proteger');
+```
+
+#### Exemplo:
+* Proteger a rota: **/api/?** utilizando o arquivo: **"guardas.php"** com uma classe: **"GuardasDeRotas"** e o método: **"api"**
+
+```php
+<?php
+$route->guard('/api/?', 'guardas.php:GuardasDeRotas=api');
+```
+
+Para facilitar a proteção de rotas é possível nomear as rotas, assim ao invés de passar a URL passa o nome da rota para o método guard.
+Para nomear uma rota deve colocar o nome que deseja entre [] no início da URL da rota.
+Obs.: As váriaveis de rota serão passadas na chamada da função/método
+
+#### Exemplo:
+* Criar a rota **"/agenda/:data/gerar-pdf"** nomear a rota para **"gPDF"**, controlada pela classe: **"MeuSite"**, metodo: **"agenda"** no arquivo: **site.php**, quando o tipo de requisição for: **"GET"**
+* Proteger a rota: **/agenda/:data/gerar-pdf** utilizando o arquivo: **"guardas.php"** com uma classe: **"GuardasDeRotas"** e o método: **"gerarPDF"**
+
+```php
+<?php
+#Criando a rota
+$route->get('[gPDF]/agenda/:data/gerar-pdf', 'site.php:MeuSite=agenda');
+
+#Criando um guarda para a rota
+$route->guard('gPDF', 'guardas.php:GuardasDeRotas=gerarPDF');
+```
 
 # Último Passo
 
