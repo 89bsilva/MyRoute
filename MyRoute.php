@@ -274,7 +274,7 @@ class MyRoute
             }
             
             $eval = $methodCall . '$remaining);';
-        } elseif($route['methodName']) {
+        } elseif('index' !== $route['methodName']) {
 
             $args = '';
     
