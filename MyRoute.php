@@ -117,32 +117,46 @@ class MyRoute
         }
     }
 
-    protected function set($url, $pageFilePath, $requestMethod)
+    protected function set($url, $filePath, $requestMethod)
     {
-        $namedRoute = substr($url, 0, 1) === '[';
+        $pageFilePath = $filePath;
+        $namedRoute   = substr($url, 0, 1) === '[';
 
         if($namedRoute) {
             $name = substr($url, 1, strpos($url, ']') - 1);
             $url  = substr($url, strpos($url, ']') + 1);
         }
+        
+        $hasClass  = strpos($filePath, ':');
+        $hasAction = strpos($filePath, '@');
+        
+        if($hasClass) {
+            $className = $this->getClassName($filePath);
+            $action    = $this->getMethodName($filePath);
+            $filePath  = substr($filePath, 0, $hasClass);
+        }
 
-        $hasClass  = strpos($pageFilePath, ':');
-        $filePath  = !!$hasClass ? substr($pageFilePath, 0, $hasClass) : $pageFilePath;
+        if($hasAction) {
+            $className = false;
+            $action    = substr($filePath, $hasAction + 1);
+            $filePath  = substr($filePath, 0, $hasAction);
+        }
+
         $settings  = $this->getRouteURLSettings($url);
         $variables = $settings['variables'];
         $remaining = $settings['remaining'];
         
         unset($settings['variables']);
         unset($settings['remaining']);
-            
+        
         $this->routes[$requestMethod][] = array(
             'url'         => $url,
             'urlSettings' => $settings,
             'variables'   => $variables,
             'remaining'   => $remaining,
             'filePath'    => $this->baseDir . $filePath,
-            'className'   => $this->getClassName($pageFilePath),
-            'methodName'  => $this->getMethodName($pageFilePath),
+            'className'   => isset($className) ? $className : $this->getClassName($pageFilePath),
+            'methodName'  => isset($action)    ? $action    : $this->getMethodName($pageFilePath),
         );
 
         $lastKey = array_key_last($this->routes[$requestMethod]);
@@ -245,9 +259,9 @@ class MyRoute
     protected function loadActiveRouteFile($route)
     {
         $remaining = $route['remaining'];
-
+        
         extract($route['variables']);
-
+        
         include_once $route['filePath'];
 
         if($route['className']) {
@@ -258,10 +272,22 @@ class MyRoute
             foreach ($route['variables'] as $varName => $value) {
                 $methodCall .= '$' . $varName . ",";
             }
-
-            $methodCall .= '$remaining);';
             
-            eval($methodCall);
+            $eval = $methodCall . '$remaining);';
+        } elseif($route['methodName']) {
+
+            $args = '';
+    
+            foreach ($route['variables'] as $varName => $value) {
+                $args .= '$' . $varName . ",";
+            }
+            
+            $args .= '$remaining);';
+            $eval  = $route['methodName'] . '(' . $args;
+        }
+
+        if(isset($eval)) {
+            eval($eval);
         }
     }
     
